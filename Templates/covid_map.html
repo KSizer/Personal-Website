@@ -1,0 +1,94 @@
+{%extends "layout.html"%}
+{%block content%}
+<script type="text/javascript" src={{cdn_js | safe}}></script>
+<script type="text/javascript" src={{cdn_widgets | safe}}></script>
+{{script | safe}}
+
+<div class = "container">
+    <h1>
+        My plot page
+    </h1>
+
+    <div class = row>
+        <div class = 'col'>
+            {{div1 | safe}}
+        </div>
+        <div class = 'col'>
+            <p>The number of new cases in each region has a fairly large range. Adjust this option if you would like for the y-axis to auto adjust based on the maximum case value</p>
+            {{div3 | safe}}
+        </div>
+    </div>
+
+    <div class="modal" id = "region-info-modal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 id = "modal-title" class="modal-title">Edit to region</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class = "container-fluid">
+                    <div class = "row justify-content-center">
+                        <div class = "col">
+                            <h5>Cases</h5>
+                        </div>
+                        <div class = "col">
+                            <h5>Deaths</h5>
+                        </div>
+                        <div class = "col">
+                            <h5>Population</h5>
+                        </div>
+                    </div>
+    
+                    <div class = "row justify-content-center">
+                        <div class = "col">
+                            <p id = "region-info-cases">edit to cases</p>
+                        </div>
+                        <div class = "col">
+                            <p id = "region-info-deaths">edit to deaths</p>
+                        </div>
+                        <div class = "col">
+                            <p id = "region-info-pop">edit to population</p>
+                        </div>
+                    </div>
+    
+                    <div class = "row justify-content-center">
+                        <div class = "col">
+                            <h5>% First Vaccination</h5>
+                        </div>
+                        <div class = "col">
+                            <h5>% Second Vaccination</h5>
+                        </div>
+                        <div class = "col">
+                            <h5>% Third Vaccination</h5>
+                        </div>
+                    </div>
+    
+                    <div class = "row justify-content-center">
+                        <div class = "col">
+                            <p id = "region-info-vacc1">edit to Vaccinated 1</p>
+                        </div>
+                        <div class = "col">
+                            <p id = "region-info-vacc2">edit to Vaccinated 2</p>
+                        </div>
+                        <div class = "col">
+                            <p id = "region-info-vacc3">edit to Vaccinated 3</p>
+                        </div>
+                    </div>
+
+                    <div class = "row justify-content-center">
+                        <div class = "col">
+                            {{div2 | safe}}
+                        </div>
+                        
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
+        </div>
+      </div>
+</div>
+{%endblock%}
