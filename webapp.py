@@ -49,7 +49,7 @@ def plot():
     p = figure(plot_width=800, plot_height=800,
            x_range=(-1008000, 255000), y_range=(6400000, 8240000),
            x_axis_type="mercator", y_axis_type="mercator",tooltips = TOOLTIPS
-           ,tools = "pan,wheel_zoom,box_zoom,reset,tap")
+           ,tools = "pan,wheel_zoom,box_zoom,reset,tap", sizing_mode = 'scale_width')
 
     p.xgrid.grid_line_color = None
     p.ygrid.grid_line_color = None
