@@ -15,7 +15,8 @@ from bokeh.models.callbacks import CustomJS
 from bokeh.embed import components
 from bokeh.resources import CDN
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='/home/KBSizer/Personal-Website/Templates',
+            static_folder='/home/KBSizer/Personal-Website/static')
 
 @app.route('/plot/')
 def plot():
