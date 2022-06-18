@@ -77,7 +77,7 @@ def plot():
 
     line_source = ColumnDataSource(data = dict(date=[],cases=[]))
 
-    l = figure(plot_width = 750, plot_height = 200, x_axis_type="datetime")
+    l = figure(plot_width = 750, plot_height = 200, x_axis_type="datetime", sizing_mode = 'stretch_both')
 
     l.y_range = Range1d(0, 40000)
 
