@@ -1,0 +1,231 @@
+{%extends "layout.html"%}
+{%block head%}
+{%endblock%}
+
+{%block content%}
+
+<div class="container">
+  <h1>Find your nearest McDonalds and the route you can take to it</h1>
+  <hr>
+  <h3>Description</h3>
+  <p>In one of my previous jobs we had a tool callled Micromarketer which allowed a lot of GIS analytics with some enhaced media data sources. For this project I wanted to se if I could replicate some of the functionality
+    using python and publically available data and APIs. This also allowed me to practice with the requests package for live data retrieval from an API.
+  </p>
+  <p>
+    This was originally planned to be a live service where you could input your adress and it would map the nearest McDonalds to you within a user specified drive time and show you the drive time and route to each one. However, I came up 
+    against cost with the use of the google routing services and a lack of knowledge on my part on how to set up the OSRM engine for web based use. It was still great as a learning project as I
+    wound up researching and learning a lot about the AWS cloud ecosystem but unfortunately it didn't work out that way in the end. I'm still putting this up as I feel it makes for an interesting
+    visualisation nonetheless.
+  </p>
+  <p>
+    Before moving on these were the packages used:
+  </p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      import overpy
+      import pandas as pd
+      from geopandas.tools import geocode
+      import requests
+      import json
+      import folium
+      import polyline
+      import flexpolyline as fp
+      import geopy</code>
+  </pre>
+  <h3>Routing locations</h3>
+  <p>
+    The first aspect of the project was to retrieve data on all of the McDonalds in the UK so that we have lat/lon info to use for the routing service. Initially I had looked into google maps
+    as it would most likely have the most complete set and it had a good API for accessing this information however that did not work out as the service is really designed for more localised queries
+    and would need to be pulled in batches. The next service I turned to was Open Street Map which holds the information in an easy to use format and with a bit of study I was able to use the 
+    <a href="http://overpass-turbo.eu/" target="blank">Overpass API</a> to pull the needed info using the code below:
+  </p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      api = overpy.Overpass()
+      
+      #Query built from http://overpass-turbo.eu/
+      result = api.query("""
+        &lt;osm-script&gt;
+        &lt;query into="_" type="node"&gt;
+          &lt;has-kv k="amenity" modv="" v="fast_food"/&gt;
+          &lt;has-kv k="cuisine" modv="" v="burger"/&gt;
+          &lt;has-kv k="brand" modv="" v="McDonald's"/&gt;
+          &lt;bbox-query s="49.674" w="-14.015517" n="61.061" e="2.0919117"/&gt;
+        &lt;/query&gt;
+        &lt;print e="" from="_" geometry="skeleton" ids="yes" limit="" mode="body" n="" order="id" s="" w=""/&gt;
+        &lt;/osm-script&gt;
+          """)
+  
+      name = []
+      website = []
+      mcd_lat = []
+      mcd_lon = []
+      drive_through = []
+      
+      for node in result.nodes:
+          name.append(node.tags.get("name"))
+          website.append(node.tags.get("contact:website"))
+          drive_through.append(node.tags.get("drive_through"))
+          mcd_lat.append(node.lat)
+          mcd_lon.append(node.lon)
+  
+      d = {"name":name,"website":website,"drive_through":drive_through,"mcd_lat":mcd_lat,"mcd_lon":mcd_lon}
+  
+      df = pd.DataFrame(d)</code>
+  </pre>
+  <p>
+    The next step was to geocode an adress provided by the user. Luckily this was fairly simple as geopandas comes with a geocoder. I used the arcgis provider as it worked without additional setup
+    and was accurate. Once the address was geocoded, I added it to the dataframe that had the McDonalds lat/lon.
+  </p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      dg = geocode("ADRESS HERE", provider="arcgis")
+      df["home_lat"] = dg["geometry"].y[0]
+      df["home_lon"] = dg["geometry"].x[0]</code>
+  </pre>
+  <H3>The routing engine</H3>
+  <p>Now that I had the ability to produce a pair of lat/lons, I needed the ability to find the time it would take to drive between these points. My initial inclination was the google maps API
+    again however it is a paid service and with amount of routes I would need to calculate I ran the risk of exceeding their free tier. If this were a commercial product I think that would be the way to go as it has 
+    a very high accuracy.
+  </p>
+  <p>So instead I looked to the OSM ecosystem again and there is a service called Open Source Routing Machine (<a href="http://project-osrm.org/" target="blank">OSRM</a>). It is a routing service built 
+    on OSM map data and is free to use with a rate limit on their demo server or unlimited if you build it yourself from their Docker image. Once you have the image set up and running yoou can make
+    a call to it using the requests library
+  </p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      r = requests.get(f"http://localhost:5000/route/v1/car/{df['home_lon'][0]},{df['home_lat'][0]};{df['mcd_lon'][0]},{df['mcd_lat'][0]}""")
+
+      routes = json.loads(r.content)
+      route_1 = routes.get("routes")[0]
+      time = route_1["duration"]</code>
+  </pre>
+  <p>Now that I have a working routing service and all the location data, I created a function to pull the route information and another to chart the routes</p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      def get_route(home_lon, home_lat, mcd_lon, mcd_lat):
+    
+      loc = "{},{};{},{}".format(home_lon, home_lat, mcd_lon, mcd_lat)
+      url = "http://localhost:5000/route/v1/driving/"
+      r = requests.get(url + loc) 
+      if r.status_code!= 200:
+          return {}
+    
+      res = r.json()   
+      routes = polyline.decode(res['routes'][0]['geometry'])
+      start_point = [res['waypoints'][0]['location'][1], res['waypoints'][0]['location'][0]]
+      end_point = [res['waypoints'][1]['location'][1], res['waypoints'][1]['location'][0]]
+      duration = res['routes'][0]['duration']
+      
+      out = {'route':[routes],
+            'start_point':[start_point],
+            'end_point':[end_point],
+            'duration':duration
+            }
+
+      return out</code>
+  </pre>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      def update_map(route):
+
+      m = folium.Map(zoom_start=5)
+  
+      folium.PolyLine(
+          route['route'],
+          weight=8,
+          color='blue',
+          opacity=0.6
+      ).add_to(m)
+  
+      folium.Marker(
+          location=route['start_point'],
+          icon=folium.Icon(icon='play', color='green'),
+      ).add_to(m)
+  
+      folium.Marker(
+          location=route['end_point'],
+          icon=folium.Icon(icon='stop', color='red'),
+          popup="Drivetime: " +  str(round(route['duration']/60,2)) +' min\nWebsite: &lta href=' + str(route['website']) + '&gtLink&lt/a&gt' + '\nDrivethrough: ' + str(route['drive_through'])
+      ).add_to(m)
+  
+      m.fit_bounds(m.get_bounds())
+  
+      return m</code>
+  </pre>
+  <p>
+    After this I loop throught the dataframe to get the info for each McDonalds route and then concat it onto the original dataframe. This could be improved by first removing some 
+    far away points using a geodesic distance function but for now there are few enough points that it doesn't take too long 
+  </p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      route_df = pd.DataFrame(columns=["route","start_point","end_point","duration"])
+
+      for i in range(0,len(df)):
+        temp_route_dict = get_route(df['home_lon'][i],df['home_lat'][i],df['mcd_lon'][i],df['mcd_lat'][i])
+        temp_route_df = pd.DataFrame.from_dict(temp_route_dict)
+        if len(route_df) == 0:
+            route_df = temp_route_df
+        else:
+            route_df = pd.concat([route_df,temp_route_df])
+        
+      
+      route_df = route_df.reset_index(drop=True)
+    
+      route_df = pd.concat([route_df,df],axis=1)</code>
+  </pre>
+  <p>Lastly I filter the dataframe based on the drive time I want. In the live service this would be selectable but for this version I just use a static 30 min drive time.</p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      filtered_route_df = route_df[route_df['duration']&lt1800].reset_index(drop=True)</code>
+  </pre>
+  <p>Now that we have this we simply create a folium map and then loop through the filtered route dataframe to create the map.</p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      m = folium.Map(zoom_start=5)
+      for i in range(0,len(filtered_route_df)):
+        update_map(filtered_route_df.loc[i,:])</code>
+  </pre>
+  {{route_map|safe}}
+  <p>The above map is fully interactable and you can click on the red markers to see some additional info on each McDonalds as well as click a link which will take you to that McDonalds website
+    if it is available.
+  </p>
+  <h3>Catchment areas</h3>
+  <p>The final piece that I wanted to see if I could replicate was the ability to generate drive time catchment areas around the McDonalds stores. This would allow some interesting work to be
+    done with postcode level population data if available. This was out of my budget but is something that a larger entity shouldn't have an issue obtaining. 
+  </p>
+  <p>There is another service which provides an api to do just this task, <a href="https://www.here.com/">HERE</a>, specifically their Isoline routing service. This allows you to generate 
+  geo polygons centred around specific points at a specified drive time or distance. Once you have set up a service on their website, you will have an api key to access the functions</p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      def catchment_map(lat,lon,time,key):
+        r = requests.get('https://isoline.router.hereapi.com/v8/isolines?transportMode=car&origin={},{}&range[type]=time&range[values]={}&routingMode=fast&apiKey={}'.format(lat,lon,time,key))
+        area = json.loads(r.content)['isolines'][0]['polygons'][0]['outer']
+        point_list = fp.decode(area)
+
+        m2 = folium.Map()
+
+        folium.Polygon(
+            locations = point_list,
+            fill = True,
+            fillColor = 'red'
+        ).add_to(m2)
+
+        folium.Marker(
+            location=[lat,lon],
+            icon=folium.Icon(icon='cutlery', color='green', prefix='fa')
+        ).add_to(m2)
+
+        m2.fit_bounds(m2.get_bounds())
+
+        return m2</code>
+  </pre>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      catchment_map(df['mcd_lat'][0],df['mcd_lon'][0],1800,here_api_key)</code>
+  </pre>
+  {{catch_map|safe}}
+</div>
+
+
+{%endblock%}

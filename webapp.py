@@ -1,5 +1,6 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, Markup
 import json
+import logging
 
 import pandas as pd
 import geopandas as gpd
@@ -15,8 +16,11 @@ from bokeh.models.callbacks import CustomJS
 from bokeh.embed import components
 from bokeh.resources import CDN
 
-app = Flask(__name__, template_folder='/home/KBSizer/Personal-Website/Templates',
-            static_folder='/home/KBSizer/Personal-Website/static')
+import folium
+
+
+
+app = Flask(__name__)
 
 @app.route('/plot/')
 def plot():
@@ -49,15 +53,15 @@ def plot():
     p = figure(plot_width=800, plot_height=800,
            x_range=(-1008000, 255000), y_range=(6400000, 8240000),
            x_axis_type="mercator", y_axis_type="mercator",tooltips = TOOLTIPS
-           ,tools = "pan,wheel_zoom,box_zoom,reset,tap", sizing_mode = 'scale_width')
+           ,tools = "pan,wheel_zoom,box_zoom,reset,tap")
 
     p.xgrid.grid_line_color = None
     p.ygrid.grid_line_color = None
 
-    p.xaxis.major_tick_line_color = None  
+    p.xaxis.major_tick_line_color = None
     p.xaxis.minor_tick_line_color = None
 
-    p.yaxis.major_tick_line_color = None  
+    p.yaxis.major_tick_line_color = None
     p.yaxis.minor_tick_line_color = None
 
     p.xaxis.major_label_text_font_size = '0pt'
@@ -69,7 +73,7 @@ def plot():
     p.patches('xs','ys', source=geo_source, fill_alpha=0.6, line_width=0.5, line_color='black', fill_color={'field' :"cases_per_cap" , 'transform': color_mapper}, nonselection_alpha=0.6)
     p.add_tile(tile_provider)
     p.add_layout(color_bar, 'below')
-    
+
     line_data = pd.read_csv('uk_covid_data_timeseries.csv', keep_default_na=False)
 
     line_data['date'] = pd.to_datetime(line_data['date'],format="%d/%m/%Y")
@@ -84,7 +88,7 @@ def plot():
 
     l.line('date','cases',source = line_source)
 
-    
+
     LABELS = ["Scale y-axis", "Don't scale y-axis"]
 
     radio_button_group = RadioButtonGroup(labels=LABELS, active=0)
@@ -92,7 +96,7 @@ def plot():
                                     console.log('radio_button_group: active=' + this.active, this.toString())
                                     line_graph.y_range.end = 40000
                                     """))
-    
+
 
     modal_update_text = CustomJS(args=dict(geo_source = geo_source, line_source = line_source, pd_data = line_data.to_dict(orient='records'), line_graph = l, rbg = radio_button_group),code = """
                         const inds = cb_obj.indices;
@@ -135,18 +139,18 @@ def plot():
                                 line_graph.y_range.end = Math.max.apply(Math, num_cases)*1.1
                             }
 
-                            
+
 
                             cb_obj.indices = []
 
                             var region_modal = new bootstrap.Modal(document.getElementById('region-info-modal'))
                             region_modal.toggle()
 
-                            
+
                         }
-                        
+
                     """)
-    
+
     geo_source.selected.js_on_change('indices', modal_update_text)
 
     script, div = components((p,l,radio_button_group))
@@ -154,10 +158,9 @@ def plot():
     div1 = div[0]
     div2 = div[1]
     div3 = div[2]
-    
+
     cdn_js = CDN.js_files[0]
     cdn_widgets = CDN.js_files[2]
-    #, div2=div2
 
     return render_template('covid_map.html', script=script, div1=div1, div2=div2, div3=div3, cdn_js=cdn_js, cdn_widgets=cdn_widgets)
 
@@ -168,6 +171,63 @@ def home():
 @app.route('/about/')
 def about():
     return render_template('about.html')
+
+@app.route('/route_finder/')
+def route_finder():
+
+    def update_map(route):
+
+        folium.PolyLine(
+            route['route'],
+            weight=8,
+            color='blue',
+            opacity=0.6
+        ).add_to(m)
+
+        folium.Marker(
+            location=route['start_point'],
+            icon=folium.Icon(icon='play', color='green'),
+        ).add_to(m)
+
+        folium.Marker(
+            location=route['end_point'],
+            icon=folium.Icon(icon='cutlery', color='red'),
+            popup="Drivetime: " +  str(round(route['duration']/60,2)) +' min\nWebsite: <a href=' + str(route['website']) + '>Link</a>' + '\nDrivethrough: ' + str(route['drive_through'])
+        ).add_to(m)
+
+        m.fit_bounds(m.get_bounds())
+
+
+        return m
+
+    filtered_route_df = pd.read_pickle('filtered_route_df.pkl')
+
+    m = folium.Map(zoom_start=5)
+
+    for i in range(0,len(filtered_route_df)):
+        update_map(filtered_route_df.loc[i,:])
+
+    route_map = m._repr_html_()
+
+    m2 = folium.Map()
+    point_list = pd.read_pickle("point_list.pkl")
+
+    folium.Polygon(
+        locations = point_list,
+        fill = True,
+        fillColor = 'red'
+    ).add_to(m2)
+
+    folium.Marker(
+        location=[53.3585523, -2.865193],
+        icon=folium.Icon(icon='cutlery', color='green', prefix='fa')
+    ).add_to(m2)
+
+    m2.fit_bounds(m2.get_bounds())
+
+    catch_map = m2._repr_html_()
+
+    return render_template('route_finder.html',route_map = route_map,catch_map=catch_map)
 
 if __name__ == "__main__":
     app.run(debug=True)
