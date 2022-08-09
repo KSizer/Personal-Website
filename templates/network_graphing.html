@@ -1,0 +1,331 @@
+{%extends "layout.html"%}
+{%block content%}
+<div class="container">
+  <h1>Community overlap for Path of Exile content creators</h1>
+  <img src="..\static\assests\images\20%_filtered_network.png" class="img-fluid" alt="">
+  <hr>
+  <H3>Description</H3>
+  <p>
+    In my spare time I enjoy playing games on my computer and one of my favourites is an ARPG called Path of Exile (PoE). The game has been around for quite a long time now and has a well established
+    and active community including many streamers and video producers that put out content related to the game. These content creators vary in their focus from people that create guides on certain builds 
+    within the game, to variety streamers that play during the seasonal leagues but switch to other games after some time, and racers who compete to  be the first to achieve certain objectives each league. 
+  </p>
+  <p>
+    I was interested to see if the communities that follow these creators are joined by these behaviours or if the viewers have no real preference in the type of content they consume related to
+    the game. To do this I want to look at the overlaps in the audiences that exist on the Twitch and YouTube platforms and produce a network graph to visualise these relationships to see if any 
+    patterns emerge.
+  </p>
+  <h3>Retrieving the data</h3>
+  <p>
+    In order to perform this analysis I needed to get data on people that were interested in the content creators that I had chosen to map. There are a few ways to approach this but based on
+    what I knew was possible using the twitch and youtube APIs I decided to go with commenters on youtube videos and twitch followers. The tables below describe the creators I used for the analysis.
+    The differences in the lists are due to how the creators use the various platforms eg. KayGaming uses her youtube channel for PoE build guides but when she streams on twitch she doesn't stream PoE.
+  </p>
+  <div class = 'row'>
+    <div class = 'col'>
+      <h5 style = "text-align: center;">Youtube</h5>
+      {{youtube_channels_table | safe}}
+    </div>
+    <div class = 'col'>
+      <h5 style = "text-align: center;">Twitch</h5>
+      {{twitch_channels_table | safe}}
+    </div>
+  </div>
+  <strong>Youtube</strong>
+  <p>
+    For youtube this wasn't much of a choice as commenter ids are the only user viewing metric that can be retrieved without being the channel owner. Subscribers, which would be equivalent to followers
+    in the twitch ecosystem can't be retrieved by anyone except the channel owner and ids of users that viewed the video aren't available at all. Commenters is still a potentially useful metric
+    though as it will likely capture the core engaged group of a channels audience.
+  </p>
+  <p>The first thing you need is the google api package. This comes prebuilt from google and is well documented <a href="https://developers.google.com/youtube/v3/docs">here</a>.</p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      from googleapiclient.discovery import build
+      import pandas as pd</code>
+  </pre>
+  <p>You can then authenticate with the service and build the resource to use to make your queries. Note that this does require you to sign up with google and register with the youtube data api. It doesn't
+    have any cost but there is a rate limit.
+  </p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      resource = build('youtube', 'v3', developerKey=api_key)</code>
+  </pre>
+  <p>
+    Now we can begin to pull the data that we are looking for. The first thing we need to do is compile a list of the channel ids of the channels that we want to look at in the network. These are not
+    immediately available by just looking at a channel so we need to get it from the api. I do this using the search query to search for the name of the channel which will return a json response
+    with many items. The first item on this list will be the channel as long as the channel name was typed correctly. This could be easily automated to iterate through multiple channel searches
+    but since I had only 20 channels it was faster for me to just search manually rather than spend the time to automate and verify that the automation worked correctly. 
+  </p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      request = resource.search().list(
+        part="snippet",
+        maxResults=25,
+        q="Sirgog"
+      )
+
+      response = request.execute()
+    
+      print(response['items'][0]['snippet']['channelId'])
+      print(response['items'][0]['snippet']['title'])
+      print(response['items'][0]['snippet']['description'])</code>
+  </pre>
+  <p>
+    Once I had all of the channel ids for the creators I wanted to analyse I created three functions to:
+  </p>
+  <ol>
+    <li>Get the latest videos on the channel up to a specified limit</li>
+    <li>Get the ids of the unique commenters on those videos</li>
+    <li>Combine the results into a single dataframe for all creator channels</li>
+  </ol>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      def get_channel_vids(channel_id,num_videos):
+        #Raise an error if you request more than 50 videos. This could be removed if you rewrote this to work with pagination
+        if num_videos>50:
+            raise ValueError('Do not request more than 50 videos')
+            
+        #Retrieve the channel content from the api
+        request = resource.channels().list(
+                                part="contentDetails",
+                                id = channel_id)
+        
+        response = request.execute()
+
+        #Get the uploads playlist id so that we can look at all of the videos uploaded by the channel
+        upload_playlist_id = response["items"][0]['contentDetails']['relatedPlaylists']['uploads']
+
+        #get the latest n videos in the uploads playlist
+        request = resource.playlistItems().list(
+                                part="snippet",
+                                playlistId = upload_playlist_id,
+                                maxResults = num_videos)
+                                
+        response = request.execute()
+
+        #get the video ids of the the pulled videos
+        video_ids = []
+        for i in range(0,len(response["items"])):
+            video_ids.append(response["items"][i]["snippet"]['resourceId']['videoId'])
+
+        return video_ids</code>
+  </pre>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      def get_comment_ids(video_id):
+        #intitial empty page token to retrieve first page results
+        page_token = None
+        author_id = []
+
+        while True:
+            #request up to 100 comments on the specified page
+            request = resource.commentThreads().list(
+                                part="snippet",
+                                videoId=video_id,
+                                maxResults= 100,
+                                order="orderUnspecified", #fetches by most recent first
+                                pageToken = page_token)
+            
+            response =request.execute()
+
+            items = response["items"]
+
+            #change page token to pull from next page or empty if on last available page
+            try:
+                page_token = response["nextPageToken"]
+            except KeyError:
+                page_token = None
+            
+            #get the channel id of the commenter
+            for item in items:
+                item_info = item["snippet"]
+
+                comment_info = item_info["topLevelComment"]["snippet"]
+                
+                author_id.append(comment_info["authorChannelId"]["value"])
+            
+            if not page_token:
+                break
+        
+        return author_id</code>
+  </pre>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      def get_network_info(channel_list):
+        df=pd.DataFrame(columns=("id","commenters"))
+
+        for i in channel_list['id']:
+            commenter_ids = []
+            videos = get_channel_vids(i,20) #don't ask for more than 50 videos. Pagination required and not implemented
+            for j in videos:
+                temp_ids = get_comment_ids(j)
+                for id in temp_ids:
+                    if id not in commenter_ids: #check that the id is a new one
+                        commenter_ids.append(id)
+            df_temp = pd.DataFrame({'id':i,'commenters':[commenter_ids]})
+
+            df = pd.concat([df,df_temp])
+            print(i)
+        
+        return df</code>
+  </pre>
+  <p>I then feed in a dataframe with a column containing the creator channel ids I pulled earlier to get the final result</p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      channel_list = pd.read_csv("youtube_channel_list.csv")
+      network = get_network_info(channel_list=channel_list)</code>
+  </pre>
+  <strong>Twitch</strong>
+  <p>
+    For twitch I went with followers of the channel however I restricted it to only users that had followed within the past year. Some of the channels I am looking at, particularly the variety
+    streamers, started playing PoE more recently and so I wanted to make sure I wasn't looking at an audience that was built before the streamer started on PoE content. Followers is also potentially
+    not the best metric available. It is possible to pull live viewers of the streams as they are happening however I didn't go this route for two reasons:
+  </p>
+  <ol>
+    <li>The time I was doing this analysis was during the lull period between two seasons and so the variety streamers were not playing the game as frequently or at all</li>
+    <li>While this would give a better view into the specific PoE viewing audience, it would also extend the data collection period over a much longer time</li>
+  </ol>
+  <p>
+    For twitch, similar to youtube I needed an api package. Twitch does not have their own, but there is a publicly available one <a href="https://pytwitchapi.readthedocs.io/en/stable/">here</a>.
+    Also similar to youtube you will need to register with twitch to be able to use the service but this a simple process and the package linked has buit in functions to handle the rate limiting
+  </p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      from twitchAPI.twitch import Twitch
+      import pandas as pd
+    
+      twitch = Twitch(app_key, app_secret)</code>
+  </pre>
+  <p>I then retrieved the channel ids of the twitch channels I was interested in. This is slightly easier than the youtube method as you can just provide a list of channel names</p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      twitch.get_users(logins = (["ventrua",'Ben_','grimro']))</code>
+  </pre>
+  <p>
+    The process of retrieving the twitch follows is much simpler than the youtube commenters since we are directly pulling it using the channel id as opposed to first going through an intermediate step.
+    So there are just two functions created this time. Once the followers are retrieved they are filtered by date to get only the follows within the past year.  
+  </p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      def get_twitch_followers(channel_id):
+        #intitial empty page token to retrieve first page results
+        page_token = None
+        follower_ids = []
+        followed_at = []
+        while True:
+            #get followers, to_id means we are getting the followers of the channel. 
+            #from_id can be used to retrieve who the channel follows themselves
+            data = twitch.get_users_follows(to_id=channel_id,after=page_token,first = 100)
+
+            items = data["data"]
+
+            #change page token to pull from next page or empty if on last available page
+            try:
+                page_token = data["pagination"]["cursor"]
+            except KeyError:
+                page_token = None
+
+            for item in items:
+                follower_ids.append(item['from_id'])
+                followed_at.append(item["followed_at"])
+
+            if not page_token:
+                break
+        
+        df = pd.DataFrame({"id":follower_ids,"followed_at":followed_at})
+
+        df["followed_at"] = pd.to_datetime(df["followed_at"])
+
+        #filter for users that followed roughly in the last year
+        filtered_df = df[df["followed_at"]>pd.to_datetime("2021-07-01",utc = True)]
+
+        return filtered_df["id"].tolist()</code>
+  </pre>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      def get_network_followers(channel_list):
+        df=pd.DataFrame(columns=("id","followers"))
+
+        for i in channel_list['id']:
+            temp_ids = get_twitch_followers(i)
+
+            df_temp = pd.DataFrame({'id':i,'followers':[temp_ids]})
+            df = pd.concat([df,df_temp])
+            print(i)
+        
+        return df</code>
+  </pre>
+  <p>Lastly, I run it with a dataframe containing an id column, similarly to the youtube functions. Note that this function will take a long time to run especially if you are wanting to look at large channels</p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      channel_list = pd.read_csv("twitch_channel_list.csv")
+      twitch_data = get_network_followers(channel_list)</code>
+  </pre>
+  <h3>Processing the data into a useable format</h3>
+  <p>
+    Now that we have data on who follows the channels we need to figure out the overlap between them in order to build out the network graphs. I'm going to be using the twitch data for this
+    as the youtube data wound up being a bit too small.
+  </p>
+  <p>
+    To do this we are going to build a similarity matrix across all of the channels with the similarity metric being the number of followers that are common across both channels
+  </p>
+  <pre>
+    <code class = "language-python" contenteditable spellcheck="false">
+      for i in range(0,len(channel_list_with_commenters.channel)):
+        for j in range(0,len(channel_list_with_commenters.channel)):
+          similarity_data.iloc[i,j] =  sum(x in channel_list_with_commenters.iloc[i,2] for x in channel_list_with_commenters.iloc[j,2])</code>
+  </pre>
+  <p>The table below shows the output of this process</p>
+  <div class = "table-responsive">
+    {{similarity_table | safe}}
+  </div>
+  <h3>Graphing the network</h3>
+  <p>
+    Now that we have the similarity matrix we can move on and create the graphs that we will use to analyse the network. To do this I will using a piece of software called Gephi. It has
+    some nice features built in to make good looking network graphs as well as some statistical tools for calculating groupings from network modularity. It can be downloaded for free from
+    <a href="https://gephi.org/">gephi.org</a>
+  </p>
+  <p>
+    To start with I simply import the data as is with all connections in place and produce the graph as is. This gives a fairly messy graph with the modularity producing two groups. The size of the
+    bubbles are scaled according to the number of followers of each creator.
+  </p>
+  <p> 
+    These groups are interesting as it has identified close relationships between the racers(Ben_,imexile,paak,ventrua) but has also mixed them with Quin69 who is a large variety streamer that I would expect would
+    be more closely tied to other variety streamers (Zizaran, empyrian). The modularity of this network is low (0.11) most likely due to the large number of connections present across the entire
+    network
+  </p>
+  <img src="..\static\assests\images\unfiltered_network.png" class="img-fluid" alt="">
+  <hr>
+  <p>
+    Now that we have this baseline we can begin to look at how the network evolves as we remove connections. The first step I looked at was requiring at least a 15% overlap between the channels.
+    I chose this value as it is around this value that we begin to see the network split out members more clearly. In this network we get a much more distinct grouping of the racers into their own
+    cluster. We also see that Quin69 has only one connection left with the network which is to be expected since he is the most variety oriented streamer in the group. Despite the intuitive results,
+    the modularity of this network is actually much worse at 0.015 likely because while things have begun to split out into groups we still have a large cluster of highly interconnected nodes which
+    means differentiating from random connections is not likely.
+  </p>
+  <img src="..\static\assests\images\15%_filtered_network.png" class="img-fluid" alt="">
+  <hr>
+  <p>
+    The next step was to use at least a 20% overlap because this is the point at which Quin69 leaves the network. We can see some similar relationships from before with the variety streamers out
+    on the edge and a denser cluster of dedicated PoE streamers and racers. The distinction within this cluster is very much on the line of racers vs general PoE creators. An interesting spar
+    off of the main cluster can seen with Pohx only having a remaining connection with CaptainLance which is likely due to these creators focusing on a particular skill in the game, Righteous Fire. 
+    Modularity in this network improves to 0.15 as more distinct groups are being formed but still remains low due to the main clusters many connections
+  </p>
+  <img src="..\static\assests\images\20%_filtered_network.png" class="img-fluid" alt="">
+  <hr>
+  <p>
+    Finally, raising the minimum overlap to 30% allows us to take a look at the strongest relationships inside the main cluster. We see the strong connection between the racers which has been maintained
+    throughout the analysis and we can see that Jungroan acts as a sort of bridge between them and the general PoE streamer population. This makes sense as Jungroan does do some racing himself but 
+    has started more recently and otherwise does a lot of build and currency analysis. The modularity of this graph is much improved at 0.31
+  </p>
+  <img src="..\static\assests\images\30%_filtered_network.png" class="img-fluid" alt="">
+  <hr>
+  <h3>Conclusion</h3>
+  <p>
+    The networks above show that there are definite variations in the audiences of Path of Exile content creators and the variations align with the type of content that they produce. A potentially
+    interesting next step would be to collect data on live viewership of the creators to see if the relationships are strengthened. It could also be interesting to include creators who focus on other games
+    in the same genre as this would allow a more complex network with more defined clusters.
+  </p>
+</div>
+
+{%endblock%}

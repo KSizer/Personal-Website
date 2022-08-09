@@ -229,6 +229,14 @@ def route_finder():
 
     return render_template('route_finder.html',route_map = route_map,catch_map=catch_map)
 
+@app.route('/network_graphing/')
+def network_graphing():
+
+    similarity_table = pd.read_csv("twitch_similarity_data.csv").to_html(index=False, classes="table table-bordered table-striped table-sm").replace("<thead>", "<thead class='table-dark'>").replace("<th>", "<th class='text-center'>")
+    twitch_channels_table = pd.read_csv("twitch_channel_list.csv").to_html(index=False, classes="table table-bordered table-striped table-sm").replace("<thead>", "<thead class='table-dark'>").replace("<th>", "<th class='text-center'>")
+    youtube_channels_table = pd.read_csv("youtube_channel_list.csv").to_html(index=False, classes="table table-bordered table-striped table-sm").replace("<thead>", "<thead class='table-dark'>").replace("<th>", "<th class='text-center'>")
+    return render_template('network_graphing.html', similarity_table=similarity_table, twitch_channels_table=twitch_channels_table, youtube_channels_table=youtube_channels_table)
+
 if __name__ == "__main__":
     app.run(debug=True)
 
