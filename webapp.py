@@ -129,8 +129,6 @@ def plot():
 
                             line_source.change.emit();
 
-                            //if you want auto y axis scaling, uncomment the lines below
-
                             console.log(selection)
 
                             if(selection === 0){

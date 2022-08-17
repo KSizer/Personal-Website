@@ -40,6 +40,20 @@
             </ul>
         </div>
     </div>
+    <p><strong>Technical description</strong></p>
+    <p>
+        I wanted to give some more information about what is going on when a user clicks on a region. Bokeh has the ability to react to certain events such as mouse movement across the chart,
+        users interacting with the chart elements or certain tools being used. When Bokeh detects one of the events it can execute some javascript code in reaction to it.
+    </p>
+    <p>
+        What is happening in the chart above is that there is an event listening for when a selection change occurs. In this case the elements that can be selected are the regions on the map and when
+        a region is selected a piece of javascript code is executed that dynamically updates the values in the modal popup based on which region is selected. This includes the text elements as well
+        as the chart.
+    </p>
+    <p>
+        The flowchart below describes how the process is executed.
+    </p>
+    <img src="..\static\assests\images\Covid Map Flowchart.jpg" class="img-fluid" alt="Covid flow chart">
 
     <div class="modal" id = "region-info-modal" tabindex="-1">
         <div class="modal-dialog modal-lg">
