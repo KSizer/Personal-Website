@@ -12,38 +12,39 @@
     </div>
     
 </div>
-<canvas class="background"></canvas> 
+<canvas class="background"></canvas>
 <script> 
-    window.onload= function() {
-      Particles.init({
-        selector: '.background',
-        connectParticles: 'True',
-        maxParticles: 200,
 
-        resposive: [
-          {
-            breakpoint: 992,
-            options:{
-              maxParticles: 10,
-              connectParticles: 'False'
-            }
-          },
-          {
-            breakpoint: 768,
-            options:{
-              maxParticles: 10,
-              connectParticles: 'False'
-            }
-          },
-          {
-            breakpoint: 576,
-            options:{
-              maxParticles: 10,
-              connectParticles: 'False'
-            }
+    window.onload = function() {
+      Particles.init({
+      selector: '.background',
+      connectParticles: 'True',
+      maxParticles: 200,
+      responsive: [
+        {
+          breakpoint: 992,
+          options: {
+            maxParticles: 150,
+            connectParticles: 'True'
           }
-        ]
+        },
+        {
+          breakpoint: 768,
+          options: {
+            maxParticles: 100,
+            connectParticles: 'True'
+          }
+        },
+        {
+          breakpoint: 576,
+          options: {
+            maxParticles: 75,
+            connectParticles: 'True'
+          }
+        }
+      ]
       });
     };
+    
 </script>
 {%endblock%}
