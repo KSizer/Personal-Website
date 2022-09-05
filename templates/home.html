@@ -18,7 +18,31 @@
       Particles.init({
         selector: '.background',
         connectParticles: 'True',
-        maxParticles: 150
+        maxParticles: 200,
+
+        resposive: [
+          {
+            breakpoint: 992,
+            options:{
+              maxParticles: 10,
+              connectParticles: 'False'
+            }
+          },
+          {
+            breakpoint: 768,
+            options:{
+              maxParticles: 10,
+              connectParticles: 'False'
+            }
+          },
+          {
+            breakpoint: 576,
+            options:{
+              maxParticles: 10,
+              connectParticles: 'False'
+            }
+          }
+        ]
       });
     };
 </script>
